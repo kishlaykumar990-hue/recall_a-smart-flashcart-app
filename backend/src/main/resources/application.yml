@@ -1,0 +1,44 @@
+spring:
+  application:
+    name: adaptive-flashcard-scheduler
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/flashcard_db}
+    username: ${SPRING_DATASOURCE_USERNAME:flashcard_user}
+    password: ${SPRING_DATASOURCE_PASSWORD:flashcard_pass}
+    hikari:
+      maximum-pool-size: 10
+  jpa:
+    hibernate:
+      ddl-auto: validate   # schema is owned by Flyway migrations, not Hibernate
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: true
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+
+server:
+  port: ${SERVER_PORT:8080}
+  error:
+    include-message: always
+
+app:
+  jwt:
+    secret: ${JWT_SECRET:change-this-super-secret-key-in-production-min-32-chars}
+    expiration-ms: ${JWT_EXPIRATION_MS:86400000} # 24h
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: never
+
+logging:
+  level:
+    com.flashcard.scheduler: INFO
+    org.springframework.security: WARN
