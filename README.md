@@ -190,83 +190,49 @@ git clone <https://github.com/kishlaykumar990-hue/recall_a-smart-flashcart-app.g
 
 ```
 
-### Start the application
+## 6. Running locally
+
+### Option A — Docker Compose (recommended, full stack)
 
 ```bash
+cp .env.example .env    # edit JWT_SECRET at minimum
 docker compose up --build
 ```
 
-Docker Compose builds and starts the required services.
+- Frontend: http://localhost:3000
+- Backend API: http://localhost:8080
+- Postgres: localhost:5432
 
-After the containers have started, open the application in your browser using the configured frontend address.
+A demo account is seeded via Flyway: **demo@example.com / Password123!**
 
-> The exact URL depends on the port configuration in the project files.
+### Option B — Run backend and frontend separately
 
-### Stop the application
-
+**Backend** (requires JDK 21, Maven, a local PostgreSQL):
 ```bash
-docker compose down
+cd backend
+createdb flashcard_db   # or use docker: docker run -p 5432:5432 -e POSTGRES_PASSWORD=flashcard_pass postgres:16
+mvn spring-boot:run
 ```
 
----
-
-## Running Without Docker
-
-The project can also be developed using the frontend and backend tools directly.
-
-### Backend
-
-The backend uses:
-
-* Java 21
-* Maven
-* Spring Boot
-* PostgreSQL
-
-Build the backend with:
-
+**Frontend** (requires Node 20+):
 ```bash
-./mvnw clean package
-```
-
-Run the application with:
-
-```bash
-./mvnw spring-boot:run
-```
-
-### Frontend
-
-The frontend uses Node.js with Vite.
-
-Install dependencies:
-
-```bash
+cd frontend
 npm install
-```
-
-Start the development server:
-
-```bash
 npm run dev
 ```
+Vite's dev server proxies `/api` to `http://localhost:8080` (see `vite.config.ts`).
 
-The exact environment variables and database configuration should be taken from the configuration files included in the repository.
+## 7. Running tests
 
----
+```bash
+# Backend: algorithm unit tests + service tests
+cd backend
+mvn test
 
-## Testing
-
-The backend uses:
-
-* **JUnit 5** for unit testing
-* **Mockito** for mocking dependencies
-
-Particular attention is given to testing the SM-2 scheduling algorithm because it is the core technical component of the project.
-
-The project also uses GitHub Actions for continuous integration and automated validation of tests and Docker builds.
-
----
+# Frontend
+cd frontend
+npm run test
+```
 
 ## Project Structure
 
@@ -328,13 +294,15 @@ Passwords are not stored as plaintext.
 
 ## Deployment
 
-The application was designed to be containerised using Docker.
-
-The project was also deployed beyond a local environment using **Render**, with PostgreSQL used as the database service.
-
-The same container-based approach is intended to make the application reproducible across different environments.
-
----
+The Docker images are self-contained and can be deployed to any container host:
+- **Render / Railway**: point each service at `backend/Dockerfile` and `frontend/Dockerfile`
+  respectively, add a managed Postgres add-on, and set `SPRING_DATASOURCE_*` and
+  `JWT_SECRET` as environment variables.
+- **Any VM / AWS EC2 / Lightsail**: `git clone`, `cp .env.example .env` (edit secrets),
+  `docker compose up -d --build`.
+- **Kubernetes**: the two Dockerfiles are ordinary multi-stage builds and can be pushed to
+  any registry and wrapped in standard Deployment/Service manifests; not included here to
+  avoid shipping unused boilerplate, but the container images require no changes.
 
 ## Project Scope
 
