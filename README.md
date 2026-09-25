@@ -1,93 +1,278 @@
-# Recall — Adaptive Flashcard Scheduler with a From-Scratch SM-2 Engine
+# Recall
 
-A spaced-repetition flashcard platform built as a master's-level Software Engineering
-portfolio project. The centerpiece is a **from-scratch implementation of the SM-2
-algorithm** (no Anki source, no third-party spaced-repetition library) with an
-exhaustive JUnit test suite validating its behavior.
+**Recall** is a web-based flashcard platform that helps learners retain study material through **spaced repetition**.
 
-> **Scope note.** The original spec for this project requested ~30 milestones' worth of
-> deliverables (full CI/CD, admin dashboard, notifications, dark mode, multi-cloud deploy
-> docs, etc.). What's implemented here is a genuinely complete, working, end-to-end system
-> covering every *core* milestone — auth, decks, cards, the SM-2 engine, review sessions,
-> dashboard analytics, Docker Compose, CI, and both unit and service-level tests. A few
-> "nice to have" items (admin UI, push notifications, dark mode toggle, AWS-specific
-> Terraform) are deliberately left for the "Future Enhancements" section below rather than
-> padded out as stubs — see the rationale at the bottom of this document.
+The system uses a from-scratch implementation of the **SM-2 (SuperMemo 2) algorithm** to determine when each flashcard should be reviewed again. After reviewing a card, the learner gives a recall-quality rating from **0 to 5**, and Recall calculates the next review date based on that rating.
+
+The main technical focus of the project is the implementation of the scheduling algorithm as a **pure, independently testable component**.
 
 ---
 
-## 1. Architecture
+## Features
+
+* User registration and login
+* JWT-based authentication
+* Create, edit, archive, and delete flashcard decks
+* Create, edit, and delete flashcards
+* Optional hints and tags for cards
+* Review cards that are due
+* Rate recall quality from 0–5
+* Automatic scheduling using the SM-2 algorithm
+* Daily study streak tracking
+* Dashboard with study statistics
+* Review activity information
+* Search cards by text
+* Organise cards using tags
+* PostgreSQL database
+* Docker and Docker Compose support
+* Automated CI using GitHub Actions
+* Public deployment support
+
+---
+
+## Technology Stack
+
+### Frontend
+
+* React 18
+* TypeScript
+* Vite
+* Tailwind CSS
+* Axios
+* Recharts
+
+### Backend
+
+* Java 21
+* Spring Boot 3
+* Spring Data JPA
+* Spring Security
+* JWT
+* BCrypt
+* Maven
+* Flyway
+
+### Database
+
+* PostgreSQL 16
+
+### Testing
+
+* JUnit 5
+* Mockito
+
+### Development and Deployment
+
+* Git
+* GitHub
+* GitHub Actions
+* Docker
+* Docker Compose
+* Render
+
+---
+
+## System Architecture
+
+Recall uses a layered client-server architecture:
+
+```text
+┌─────────────────────────┐
+│       Frontend          │
+│   React + TypeScript    │
+└────────────┬────────────┘
+             │ REST API
+             ▼
+┌─────────────────────────┐
+│        Backend          │
+│ Spring Boot + Java 21   │
+└────────────┬────────────┘
+             │
+             ▼
+┌─────────────────────────┐
+│       Database          │
+│      PostgreSQL 16      │
+└─────────────────────────┘
+```
+
+The frontend provides the user interface, the Spring Boot backend provides the REST API and application logic, and PostgreSQL stores application data.
+
+Authentication is handled using JWT, with passwords protected using BCrypt.
+
+---
+
+## SM-2 Scheduling
+
+The SM-2 algorithm is the core component of Recall.
+
+After a learner reviews a card, they provide a quality rating between **0 and 5**. The system uses this rating together with the card's previous scheduling information to calculate:
+
+* Ease factor
+* Number of repetitions
+* Review interval
+* Next review date
+
+The scheduling algorithm is implemented as a framework-independent component:
+
+```text
+Sm2Algorithm.schedule(...)
+```
+
+It receives the required scheduling values and returns a scheduling result without depending on Spring, JPA, or database entities.
+
+This separation makes the scheduling logic easier to test and maintain.
+
+---
+
+## Main Application Pages
+
+The application contains:
+
+* **Login** — user authentication
+* **Register** — new user registration
+* **Dashboard** — study statistics and activity
+* **Decks** — manage flashcard decks
+* **Deck Detail** — manage cards within a deck
+* **Study** — review cards and submit recall ratings
+
+---
+
+## Database
+
+Recall uses PostgreSQL for persistent storage.
+
+The main entities are:
+
+* User
+* Deck
+* Card
+* Tag
+* ReviewLog
+
+Database changes are managed using **Flyway migrations**.
+
+The project uses migrations rather than automatically generating the database schema from the JPA entities. Hibernate uses validation to check that the entity model matches the database schema.
+
+---
+
+## API
+
+The backend provides REST endpoints for:
+
+* Authentication
+* Deck management
+* Card management
+* Reviews
+* Dashboard statistics
+
+Protected endpoints require a valid JWT.
+
+The API can also be inspected using the project's API documentation/Swagger interface.
+
+---
+
+## Running the Project with Docker
+
+Docker Compose is provided to simplify local setup.
+
+### Prerequisites
+
+Make sure the following are installed:
+
+* Docker
+* Docker Compose
+* Git
+
+### Clone the repository
+
+```bash
+git clone <https://github.com/kishlaykumar990-hue/recall_a-smart-flashcart-app.git>
 
 ```
-                        ┌─────────────────────┐
-                        │   React + TS SPA     │  (Vite, Tailwind, Recharts)
-                        │   nginx (prod)        │
-                        └──────────┬───────────┘
-                                   │ REST/JSON, JWT bearer
-                        ┌──────────▼───────────┐
-                        │  Spring Boot 3 API    │
-                        │  Controller layer     │
-                        ├───────────────────────┤
-                        │  Service layer         │  <- SM-2 orchestration lives here
-                        │  (business logic)      │
-                        ├───────────────────────┤
-                        │  Sm2Algorithm (pure)   │  <- zero framework/DB coupling
-                        ├───────────────────────┤
-                        │  Repository layer      │  (Spring Data JPA)
-                        └──────────┬───────────┘
-                                   │
-                        ┌──────────▼───────────┐
-                        │     PostgreSQL 16      │
-                        │  (schema via Flyway)   │
-                        └───────────────────────┘
+
+### Start the application
+
+```bash
+docker compose up --build
 ```
 
-**Why this layering:** the SM-2 algorithm (`Sm2Algorithm.java`) is written as a static,
-pure, dependency-free class — it takes primitives in, returns a primitive result record
-out. It has no knowledge of Spring, JPA, or the database. This means:
-1. It can be unit tested exhaustively with plain JUnit, no Spring context required (fast, deterministic).
-2. The scheduling math can be verified independently of persistence bugs.
-3. If the persistence technology ever changes, the algorithm is untouched.
+Docker Compose builds and starts the required services.
 
-`SchedulingService` is the seam that connects the pure algorithm to the database: it loads
-a `Card`, calls `Sm2Algorithm.schedule(...)`, persists the new state, writes an immutable
-`ReviewLog` row for analytics, and updates the learner's streak — all inside one
-`@Transactional` boundary.
+After the containers have started, open the application in your browser using the configured frontend address.
 
-## 2. The SM-2 algorithm, as implemented
+> The exact URL depends on the port configuration in the project files.
 
-See `backend/src/main/java/com/flashcard/scheduler/service/Sm2Algorithm.java` for the full
-javadoc. Summary:
+### Stop the application
 
-- Quality of recall `q` is scored 0–5 by the learner after seeing the answer.
-- Ease factor update: `EF' = EF + (0.1 − (5−q)·(0.08 + (5−q)·0.02))`, floored at `1.3`.
-- If `q < 3` (forgotten): repetitions reset to 0, interval resets to 1 day.
-- If `q ≥ 3` (recalled): repetitions increment; interval is `1` day on the first success,
-  `6` days on the second, and `round(previous_interval × EF')` thereafter.
-- Next due date = today + interval.
-
-Every branch of this logic — including the ease-factor floor, the lapse-reset behavior,
-and a hand-computed multi-review trajectory — is covered in
-`backend/src/test/java/com/flashcard/scheduler/algorithm/Sm2AlgorithmTest.java`, plus a
-Mockito-based service test in `SchedulingServiceTest.java` verifying the persistence side
-effects (card state, review log, streak update).
-
-## 3. Tech stack
-
-| Layer | Choice | Why |
-|---|---|---|
-| Backend | Spring Boot 3 / Java 21 | Mature ecosystem, strong typing suits a scheduling algorithm with numeric edge cases |
-| DB | PostgreSQL 16 + Flyway | Flyway makes schema changes explicit and reviewable, matching "production-quality" requirement |
-| Auth | JWT (jjwt) + Spring Security, BCrypt | Stateless — horizontally scalable, no session affinity needed |
-| Frontend | React 18 + TypeScript + Vite | Fast dev loop, full type-safety end to end with the DTOs |
-| Styling | Tailwind CSS | Utility-first, keeps a consistent design system without a component library dependency |
-| Charts | Recharts | Lightweight, composable, good fit for the retention/review bar chart |
-| Containerization | Docker multi-stage builds + Compose | Reproducible dev/prod parity |
-| CI | GitHub Actions | Backend tests, frontend tests + build, Docker image validation on every push/PR |
-
-## 4. Project structure
-
+```bash
+docker compose down
 ```
+
+---
+
+## Running Without Docker
+
+The project can also be developed using the frontend and backend tools directly.
+
+### Backend
+
+The backend uses:
+
+* Java 21
+* Maven
+* Spring Boot
+* PostgreSQL
+
+Build the backend with:
+
+```bash
+./mvnw clean package
+```
+
+Run the application with:
+
+```bash
+./mvnw spring-boot:run
+```
+
+### Frontend
+
+The frontend uses Node.js with Vite.
+
+Install dependencies:
+
+```bash
+npm install
+```
+
+Start the development server:
+
+```bash
+npm run dev
+```
+
+The exact environment variables and database configuration should be taken from the configuration files included in the repository.
+
+---
+
+## Testing
+
+The backend uses:
+
+* **JUnit 5** for unit testing
+* **Mockito** for mocking dependencies
+
+Particular attention is given to testing the SM-2 scheduling algorithm because it is the core technical component of the project.
+
+The project also uses GitHub Actions for continuous integration and automated validation of tests and Docker builds.
+
+---
+
+## Project Structure
+
+A simplified structure is:
+
+```text
 flashcard-scheduler/
 ├── backend/
 │   ├── src/main/java/com/flashcard/scheduler/
@@ -123,136 +308,60 @@ flashcard-scheduler/
 └── .github/workflows/ci.yml
 ```
 
-## 5. REST API
+The exact structure may vary depending on the final repository organisation.
 
-| Method | Endpoint | Description | Auth |
-|---|---|---|---|
-| POST | `/api/auth/register` | Create account, returns JWT | Public |
-| POST | `/api/auth/login` | Authenticate, returns JWT | Public |
-| GET/POST | `/api/decks` | List / create decks | Bearer |
-| GET/PUT | `/api/decks/{id}` | Fetch / update a deck | Bearer |
-| PATCH | `/api/decks/{id}/archive` | Archive a deck | Bearer |
-| DELETE | `/api/decks/{id}` | Delete a deck | Bearer |
-| POST | `/api/cards` | Create a card | Bearer |
-| GET | `/api/cards/deck/{deckId}` | List cards in a deck | Bearer |
-| GET | `/api/cards/due` | List all cards due today for the user | Bearer |
-| GET | `/api/cards/search?term=` | Search front/back text | Bearer |
-| PUT/DELETE | `/api/cards/{id}` | Update / delete a card | Bearer |
-| POST | `/api/reviews` | Submit a review (`cardId`, `quality` 0-5) → runs SM-2 | Bearer |
-| GET | `/api/stats/dashboard` | Streaks, retention rate, 14-day chart data | Bearer |
+---
 
-Swagger UI is available at `/swagger-ui.html` when the backend is running
-(springdoc-openapi is on the classpath).
+## Security
 
-## 6. Running locally
+Recall uses several security mechanisms:
 
-### Option A — Docker Compose (recommended, full stack)
+* JWT authentication
+* BCrypt password hashing
+* Protected REST endpoints
+* Input validation
+* Centralised error handling
 
-```bash
-cp .env.example .env    # edit JWT_SECRET at minimum
-docker compose up --build
-```
+Passwords are not stored as plaintext.
 
-- Frontend: http://localhost:3000
-- Backend API: http://localhost:8080
-- Postgres: localhost:5432
+---
 
-A demo account is seeded via Flyway: **demo@example.com / Password123!**
+## Deployment
 
-### Option B — Run backend and frontend separately
+The application was designed to be containerised using Docker.
 
-**Backend** (requires JDK 21, Maven, a local PostgreSQL):
-```bash
-cd backend
-createdb flashcard_db   # or use docker: docker run -p 5432:5432 -e POSTGRES_PASSWORD=flashcard_pass postgres:16
-mvn spring-boot:run
-```
+The project was also deployed beyond a local environment using **Render**, with PostgreSQL used as the database service.
 
-**Frontend** (requires Node 20+):
-```bash
-cd frontend
-npm install
-npm run dev
-```
-Vite's dev server proxies `/api` to `http://localhost:8080` (see `vite.config.ts`).
+The same container-based approach is intended to make the application reproducible across different environments.
 
-## 7. Running tests
+---
 
-```bash
-# Backend: algorithm unit tests + service tests
-cd backend
-mvn test
+## Project Scope
 
-# Frontend
-cd frontend
-npm run test
-```
+The current project focuses on:
 
-> **Sandbox caveat during generation:** the environment this project was authored in had
-> no network access to Maven Central, so `mvn test` could not be executed live here. The
-> SM-2 test suite's assertions were derived and checked by hand against the algorithm's
-> published formulas (see the `handComputedTrajectory` test). Run `mvn test` yourself
-> after cloning — the project is structured to build cleanly with a standard JDK 21 +
-> Maven setup.
+* Authentication
+* Flashcard and deck management
+* Spaced-repetition reviews
+* SM-2 scheduling
+* Study streaks
+* Dashboard statistics
+* Search and tags
+* Containerised deployment
 
-## 8. Deployment
+The following features are outside the current scope:
 
-The Docker images are self-contained and can be deployed to any container host:
-- **Render / Railway**: point each service at `backend/Dockerfile` and `frontend/Dockerfile`
-  respectively, add a managed Postgres add-on, and set `SPRING_DATASOURCE_*` and
-  `JWT_SECRET` as environment variables.
-- **Any VM / AWS EC2 / Lightsail**: `git clone`, `cp .env.example .env` (edit secrets),
-  `docker compose up -d --build`.
-- **Kubernetes**: the two Dockerfiles are ordinary multi-stage builds and can be pushed to
-  any registry and wrapped in standard Deployment/Service manifests; not included here to
-  avoid shipping unused boilerplate, but the container images require no changes.
+* Administrative interface
+* Notifications
+* Dark mode
+* Machine-learning-based scheduling
 
-## 9. Security notes
+These are documented as possible future improvements rather than part of the current implementation.
 
-- Passwords hashed with BCrypt (strength 12).
-- JWT signed with HMAC-SHA256; secret is externalized via env var, never hardcoded.
-- Stateless sessions (`SessionCreationPolicy.STATELESS`) — no server-side session storage.
-- All deck/card/review endpoints scope queries by the authenticated owner
-  (`findByIdAndDeckOwner`, etc.) — one user cannot read or mutate another's data even by
-  guessing UUIDs.
-- Input validation via Jakarta Bean Validation on every request DTO.
-- `GlobalExceptionHandler` ensures internal exceptions never leak stack traces to clients.
+---
 
-## 10. Performance notes
+## Author
 
-- Indexes on `cards.due_date`, `cards.deck_id`, and `review_logs.reviewed_at` /
-  `review_logs.user_id` support the two hottest queries: "cards due today" and "recent
-  review history for the dashboard chart."
-- `spring.jpa.open-in-view: false` prevents accidental lazy-loading N+1 queries from
-  leaking into the view layer.
-- HikariCP pool sized modestly (10 connections) — appropriate for a portfolio-scale
-  deployment; tune upward under real load.
+**Kishlay Kumar**
 
-## 11. Future enhancements
 
-These were in the original spec but are explicitly out of scope for this pass, in the
-interest of shipping a complete, working, non-padded system rather than dozens of stub
-files:
-
-- Admin dashboard UI (the `ADMIN` role and `/api/admin/**` route protection already exist
-  in `SecurityConfig`; only the admin-facing screens are unbuilt)
-- Due-card push/email notifications
-- Dark mode toggle (the Tailwind color tokens are centralized in `tailwind.config.js`,
-  so a dark palette is a config change away)
-- Full-text search ranking beyond simple `LIKE` matching
-- Multi-device sync conflict resolution
-- Terraform/CloudFormation for AWS-specific infra (Docker Compose covers single-host
-  deployment; multi-cloud IaC is a separate, substantial project on its own)
-
-## 12. Why some things were built the way they were
-
-- **Card holds live SM-2 state directly** rather than a separate `SchedulingState` table:
-  there's exactly one active scheduling state per card, so splitting tables would add a
-  join to the hottest read path (loading due cards) for no benefit. Full history lives
-  separately in `ReviewLog`.
-- **`Sm2Algorithm` is a static utility, not a Spring bean**: it has no dependencies to
-  inject, so making it a bean would only add indirection. `SchedulingService` (which *is*
-  a Spring bean) is the integration point.
-- **DTOs are Java records / TypeScript interfaces, not shared codegen**: for a project
-  this size, keeping them hand-written in sync is simpler and more transparent than
-  introducing an OpenAPI-codegen build step.
